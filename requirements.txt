@@ -1,6 +1,6 @@
 streamlit==1.32.2
 opencv-python-headless==4.8.1.78
-mediapipe==0.10.14
+mediapipe==0.10.32
 protobuf==4.25.3
 torch==2.2.1
 diffusers==0.27.2
