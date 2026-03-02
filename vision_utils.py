@@ -6,9 +6,55 @@ Uses OpenCV and MediaPipe for image analysis in personal styling.
 from pathlib import Path
 from typing import Any, Optional
 
-import cv2
-import mediapipe as mp
 import numpy as np
+
+# NOTE ABOUT DEPLOYMENT (Streamlit Cloud / Linux):
+# - Importing `cv2` (OpenCV) at module import time can crash the whole app if the
+#   environment is missing system libs or the wrong OpenCV wheel is installed.
+# - Importing `mediapipe` can also fail depending on the Python version/wheels.
+#
+# To make the app *deploy-safe*, we import OpenCV/MediaPipe lazily inside helper
+# functions. That way the Streamlit app can still start, and you get a clear,
+# actionable error message when you click "Run feature extraction".
+
+
+def _import_cv2():
+    """
+    Import OpenCV lazily and raise a clear error if unavailable.
+
+    Why: Streamlit loads modules at app start. If cv2 fails to import, the entire
+    app crashes before the UI renders. Lazy importing keeps the UI available.
+    """
+    try:
+        import cv2  # type: ignore
+
+        return cv2
+    except Exception as e:  # pragma: no cover (depends on environment)
+        raise RuntimeError(
+            "OpenCV import failed. If you're deploying on Streamlit Cloud/Linux, "
+            "use `opencv-python-headless` (not `opencv-python`) in requirements.txt, "
+            "then reboot/redeploy the app."
+        ) from e
+
+
+def _import_mediapipe():
+    """
+    Import MediaPipe lazily and raise a clear error if unavailable.
+
+    MediaPipe sometimes has limited wheel support for newest Python versions.
+    If installation/import fails on a hosted platform, pin to a supported Python
+    runtime (commonly 3.10–3.11) or adjust your deployment runtime.
+    """
+    try:
+        import mediapipe as mp  # type: ignore
+
+        return mp
+    except Exception as e:  # pragma: no cover (depends on environment)
+        raise RuntimeError(
+            "MediaPipe import failed. This is often due to Python version wheel "
+            "availability on your platform. Try using a supported Python version "
+            "(e.g., 3.11) and redeploy."
+        ) from e
 
 # MediaPipe Face Mesh landmark indices for key facial regions
 # See: https://github.com/google/mediapipe/blob/master/mediapipe/modules/face_geometry/data/canonical_face_model_uv_visibility.obj
@@ -46,6 +92,8 @@ def load_image(path: Path) -> np.ndarray:
     if not path.exists():
         raise FileNotFoundError(f"Image not found: {path}")
 
+    cv2 = _import_cv2()
+
     # cv2.imread returns BGR numpy array, or None if loading fails
     image = cv2.imread(str(path))
     if image is None:
@@ -67,6 +115,9 @@ def detect_face(image: np.ndarray) -> Optional[dict[str, Any]]:
         Dict with 'bbox' as [x_min, y_min, x_max, y_max] in normalized coords,
         or None if no face detected.
     """
+    cv2 = _import_cv2()
+    mp = _import_mediapipe()
+
     # Convert BGR to RGB (MediaPipe expects RGB)
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
@@ -113,6 +164,9 @@ def detect_face_landmarks(image: np.ndarray) -> Optional[np.ndarray]:
         coordinates. x, y are in [0, 1] relative to image dimensions.
         Returns None if no face detected.
     """
+    cv2 = _import_cv2()
+    mp = _import_mediapipe()
+
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
     mp_face_mesh = mp.solutions.face_mesh
